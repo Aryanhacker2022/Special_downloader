@@ -1,0 +1,173 @@
+name: Download and Release (Auto Split + Auto Cleanup)
+
+on:
+  workflow_dispatch:
+    inputs:
+      url:
+        description: 'URL of the video'
+        required: true
+        type: string
+      quality:
+        description: 'Video quality (yt-dlp format selector)'
+        required: true
+        type: string
+        default: 'bestvideo[height<=720]+bestaudio/best[ext=mp4]/best'
+
+permissions:
+  contents: write
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  download-and-release:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+
+      - name: Install yt-dlp
+        run: |
+          pip install -U yt-dlp
+
+      - name: Download video (retry up to 5 times)
+        id: download
+        shell: bash
+        run: |
+          mkdir -p downloads
+          touch marker
+
+          MAX_RETRIES=5
+          RETRY_COUNT=0
+          SUCCESS=false
+
+          while [ $RETRY_COUNT -lt $MAX_RETRIES ]; do
+            echo "Download attempt $((RETRY_COUNT+1))/$MAX_RETRIES"
+
+            yt-dlp \
+              --output "./downloads/%(uploader)s - %(title)s - %(id)s.%(ext)s" \
+              --format "${{ github.event.inputs.quality }}" \
+              --merge-output-format mp4 \
+              --retries 3 \
+              --fragment-retries 10 \
+              --no-check-certificate \
+              --geo-bypass \
+              --no-color \
+              --ignore-errors \
+              --newline \
+              "${{ github.event.inputs.url }}" && {
+
+                NEW_FILE=$(find downloads -type f -newer marker -print -quit)
+
+                if [ -n "$NEW_FILE" ]; then
+                  echo "Download succeeded: $NEW_FILE"
+                  SUCCESS=true
+                  break
+                else
+                  echo "Download finished but no file detected. Retrying..."
+                fi
+              } || {
+                echo "Download attempt failed"
+              }
+
+            RETRY_COUNT=$((RETRY_COUNT+1))
+
+            if [ $RETRY_COUNT -lt $MAX_RETRIES ]; then
+              sleep 5
+            fi
+          done
+
+          if [ "$SUCCESS" = false ]; then
+            echo "All download attempts failed"
+            exit 1
+          fi
+
+          FILENAME=$(basename "$NEW_FILE")
+          SIZE_BYTES=$(stat -c %s "$NEW_FILE")
+          SIZE_MB=$(echo "scale=2; $SIZE_BYTES / 1048576" | bc)
+
+          echo "filename=$FILENAME" >> $GITHUB_OUTPUT
+          echo "size_bytes=$SIZE_BYTES" >> $GITHUB_OUTPUT
+          echo "size_mb=$SIZE_MB" >> $GITHUB_OUTPUT
+          echo "file_path=$NEW_FILE" >> $GITHUB_OUTPUT
+
+      - name: Show file info
+        run: |
+          echo "✅ دانلود موفق!"
+          echo "📁 فایل: ${{ steps.download.outputs.filename }}"
+          echo "📊 حجم: ${{ steps.download.outputs.size_mb }} MB"
+
+      - name: Split if larger than 2GB (or keep as is)
+        id: split
+        run: |
+          FILE_PATH="${{ steps.download.outputs.file_path }}"
+          SIZE_BYTES=${{ steps.download.outputs.size_bytes }}
+          THRESHOLD=$((2 * 1024 * 1024 * 1024))  # 2GB
+
+          mkdir -p upload_files
+
+          if [ $SIZE_BYTES -gt $THRESHOLD ]; then
+            echo "⚠️ فایل بزرگتر از 2GB است، در حال Split به تکه‌های 2GB..."
+            split -b 2G "$FILE_PATH" "upload_files/part_" --additional-suffix=".part"
+            echo "NEED_SPLIT=true" >> $GITHUB_OUTPUT
+            echo "تکه‌ها ایجاد شدند:"
+            ls -lh upload_files/
+          else
+            echo "✅ فایل کمتر از 2GB است، بدون تغییر"
+            cp "$FILE_PATH" "upload_files/$(basename "$FILE_PATH")"
+            echo "NEED_SPLIT=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Create Release and Upload
+        id: create_release
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: v${{ github.run_number }}
+          name: "📥 دانلود - $(date +'%Y-%m-%d %H:%M')"
+          files: upload_files/*
+          fail_on_unmatched_files: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Show Download Link
+        run: |
+          echo ""
+          echo "══════════════════════════════════════════════════════════"
+          echo "✅ فایل با موفقیت آپلود شد!"
+          echo "══════════════════════════════════════════════════════════"
+          echo ""
+          echo "🔗 صفحه Releases:"
+          echo "   https://github.com/${{ github.repository }}/releases/tag/v${{ github.run_number }}"
+          echo ""
+
+          if [ "${{ steps.split.outputs.NEED_SPLIT }}" = "true" ]; then
+            echo "⚠️ این فایل به تکه‌های 2GB تقسیم شده است."
+            echo ""
+            echo "📥 نحوه دانلود و ترکیب:"
+            echo "   1. همه تکه‌ها را دانلود کن"
+            echo "   2. در ترمینال (یا CMD) دستور زیر را اجرا کن:"
+            echo ""
+            echo "   📍 لینوکس/مک: cat part_*.part > فایل_نهایی.mp4"
+            echo "   📍 ویندوز: copy /b part_*.part فایل_نهایی.mp4"
+            echo ""
+          else
+            echo "🔗 لینک مستقیم دانلود:"
+            echo "   https://github.com/${{ github.repository }}/releases/download/v${{ github.run_number }}/$(basename "${{ steps.download.outputs.file_path }}")"
+            echo ""
+          fi
+
+          echo "══════════════════════════════════════════════════════════"
+
+      - name: Cleanup old releases (keep only latest 1)
+        uses: dev-drprasad/delete-older-releases@v0.3.2
+        with:
+          keep_latest: 1
+          delete_tags: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

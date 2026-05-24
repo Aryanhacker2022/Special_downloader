@@ -1,4 +1,4 @@
-name: Download and Upload to Buzzheavier
+name: Download and Upload to Litterbox.cat
 
 on:
   workflow_dispatch:
@@ -89,12 +89,12 @@ jobs:
           echo "📁 File: ${{ steps.download.outputs.filename }}"
           echo "📊 Size: ${{ steps.download.outputs.size_mb }} MB"
 
-      - name: Upload to Buzzheavier (with retry)
-        id: buzzheavier
+      - name: Upload to Litterbox.cat (with retry)
+        id: litterbox
         run: |
           FILE_PATH="${{ steps.download.outputs.file_path }}"
           
-          echo "📤 Uploading to Buzzheavier..."
+          echo "📤 Uploading to Litterbox.cat..."
           
           MAX_RETRIES=3
           RETRY_COUNT=0
@@ -103,7 +103,7 @@ jobs:
           while [ $RETRY_COUNT -lt $MAX_RETRIES ]; do
             echo "Upload attempt $((RETRY_COUNT+1))/$MAX_RETRIES"
             
-            RESPONSE=$(curl -s -F "file=@$FILE_PATH" https://w.buzzheavier.com/upload)
+            RESPONSE=$(curl -s -F "file=@$FILE_PATH" https://litterbox.cat/upload)
             
             DOWNLOAD_URL=$(echo $RESPONSE | grep -o '"url":"[^"]*"' | cut -d '"' -f 4)
             
@@ -129,19 +129,19 @@ jobs:
         run: |
           echo ""
           echo "══════════════════════════════════════════════════════════"
-          echo "✅ File successfully uploaded to Buzzheavier!"
+          echo "✅ File successfully uploaded to Litterbox.cat!"
           echo "══════════════════════════════════════════════════════════"
           echo ""
           echo "📁 File: ${{ steps.download.outputs.filename }}"
           echo "📊 Size: ${{ steps.download.outputs.size_mb }} MB"
           echo ""
           echo "🔗 Download Link:"
-          echo "   ${{ steps.buzzheavier.outputs.download_url }}"
+          echo "   ${{ steps.litterbox.outputs.download_url }}"
           echo ""
           echo "══════════════════════════════════════════════════════════"
           echo ""
           echo "⚠️ Notes:"
-          echo "   - File stays on Buzzheavier for at least 8 days"
-          echo "   - If downloaded 60+ times, it becomes permanent"
-          echo "   - No file size limit (supports very large files)"
+          echo "   - File stays on Litterbox.cat for 3 days OR 10 downloads"
+          echo "   - Maximum file size: 10 GB per file"
+          echo "   - No registration required"
           echo "   - Save this link now!"

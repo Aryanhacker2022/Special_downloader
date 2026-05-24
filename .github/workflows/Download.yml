@@ -1,4 +1,4 @@
-name: Download and Upload to Gofile.io
+name: Download and Upload to Buzzheavier
 
 on:
   workflow_dispatch:
@@ -89,12 +89,12 @@ jobs:
           echo "📁 File: ${{ steps.download.outputs.filename }}"
           echo "📊 Size: ${{ steps.download.outputs.size_mb }} MB"
 
-      - name: Upload to Gofile.io (with retry)
-        id: gofile
+      - name: Upload to Buzzheavier (with retry)
+        id: buzzheavier
         run: |
           FILE_PATH="${{ steps.download.outputs.file_path }}"
           
-          echo "📤 Uploading to Gofile.io..."
+          echo "📤 Uploading to Buzzheavier..."
           
           MAX_RETRIES=3
           RETRY_COUNT=0
@@ -103,12 +103,11 @@ jobs:
           while [ $RETRY_COUNT -lt $MAX_RETRIES ]; do
             echo "Upload attempt $((RETRY_COUNT+1))/$MAX_RETRIES"
             
-            RESPONSE=$(curl -s -F "file=@$FILE_PATH" https://store1.gofile.io/uploadFile)
+            RESPONSE=$(curl -s -F "file=@$FILE_PATH" https://w.buzzheavier.com/upload)
             
-            STATUS=$(echo $RESPONSE | grep -o '"status":"[^"]*"' | cut -d '"' -f 4)
+            DOWNLOAD_URL=$(echo $RESPONSE | grep -o '"url":"[^"]*"' | cut -d '"' -f 4)
             
-            if [ "$STATUS" = "ok" ]; then
-              DOWNLOAD_URL=$(echo $RESPONSE | grep -o '"downloadPage":"[^"]*"' | cut -d '"' -f 4)
+            if [ -n "$DOWNLOAD_URL" ]; then
               echo "download_url=$DOWNLOAD_URL" >> $GITHUB_OUTPUT
               UPLOAD_SUCCESS=true
               echo "✅ Upload successful!"
@@ -130,18 +129,19 @@ jobs:
         run: |
           echo ""
           echo "══════════════════════════════════════════════════════════"
-          echo "✅ File successfully uploaded to Gofile.io!"
+          echo "✅ File successfully uploaded to Buzzheavier!"
           echo "══════════════════════════════════════════════════════════"
           echo ""
           echo "📁 File: ${{ steps.download.outputs.filename }}"
           echo "📊 Size: ${{ steps.download.outputs.size_mb }} MB"
           echo ""
           echo "🔗 Download Link:"
-          echo "   ${{ steps.gofile.outputs.download_url }}"
+          echo "   ${{ steps.buzzheavier.outputs.download_url }}"
           echo ""
           echo "══════════════════════════════════════════════════════════"
           echo ""
           echo "⚠️ Notes:"
-          echo "   - File stays on Gofile for at least 10 days"
-          echo "   - If downloaded daily, it will stay longer"
+          echo "   - File stays on Buzzheavier for at least 8 days"
+          echo "   - If downloaded 60+ times, it becomes permanent"
+          echo "   - No file size limit (supports very large files)"
           echo "   - Save this link now!"

@@ -1,4 +1,4 @@
-name: Download and Upload to Litterbox.cat
+name: Download and Upload to Pixeldrain
 
 on:
   workflow_dispatch:
@@ -89,12 +89,12 @@ jobs:
           echo "📁 File: ${{ steps.download.outputs.filename }}"
           echo "📊 Size: ${{ steps.download.outputs.size_mb }} MB"
 
-      - name: Upload to Litterbox.cat (with retry)
-        id: litterbox
+      - name: Upload to Pixeldrain (with retry)
+        id: pixeldrain
         run: |
           FILE_PATH="${{ steps.download.outputs.file_path }}"
           
-          echo "📤 Uploading to Litterbox.cat..."
+          echo "📤 Uploading to Pixeldrain..."
           
           MAX_RETRIES=3
           RETRY_COUNT=0
@@ -103,11 +103,12 @@ jobs:
           while [ $RETRY_COUNT -lt $MAX_RETRIES ]; do
             echo "Upload attempt $((RETRY_COUNT+1))/$MAX_RETRIES"
             
-            RESPONSE=$(curl -s -F "file=@$FILE_PATH" https://litterbox.cat/upload)
+            RESPONSE=$(curl -s -T "$FILE_PATH" https://pixeldrain.com/api/file/)
             
-            DOWNLOAD_URL=$(echo $RESPONSE | grep -o '"url":"[^"]*"' | cut -d '"' -f 4)
+            ID=$(echo $RESPONSE | grep -o '"id":"[^"]*"' | cut -d '"' -f 4)
             
-            if [ -n "$DOWNLOAD_URL" ]; then
+            if [ -n "$ID" ]; then
+              DOWNLOAD_URL="https://pixeldrain.com/u/$ID"
               echo "download_url=$DOWNLOAD_URL" >> $GITHUB_OUTPUT
               UPLOAD_SUCCESS=true
               echo "✅ Upload successful!"
@@ -129,19 +130,19 @@ jobs:
         run: |
           echo ""
           echo "══════════════════════════════════════════════════════════"
-          echo "✅ File successfully uploaded to Litterbox.cat!"
+          echo "✅ File successfully uploaded to Pixeldrain!"
           echo "══════════════════════════════════════════════════════════"
           echo ""
           echo "📁 File: ${{ steps.download.outputs.filename }}"
           echo "📊 Size: ${{ steps.download.outputs.size_mb }} MB"
           echo ""
           echo "🔗 Download Link:"
-          echo "   ${{ steps.litterbox.outputs.download_url }}"
+          echo "   ${{ steps.pixeldrain.outputs.download_url }}"
           echo ""
           echo "══════════════════════════════════════════════════════════"
           echo ""
           echo "⚠️ Notes:"
-          echo "   - File stays on Litterbox.cat for 3 days OR 10 downloads"
+          echo "   - File stays on Pixeldrain for 60 days (extended with downloads)"
           echo "   - Maximum file size: 10 GB per file"
-          echo "   - No registration required"
+          echo "   - Download limit: 5 GB per day per IP"
           echo "   - Save this link now!"
